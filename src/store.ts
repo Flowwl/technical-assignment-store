@@ -20,33 +20,101 @@ export interface IStore {
   entries(): JSONObject;
 }
 
-export function Restrict(...params: unknown[]): any {
+
+export function Restrict(...params: Permission[]): any {
+  return function (target: any, propertyKey: string | symbol) {
+    const key = String(propertyKey);
+
+    const privateKey = Symbol(key);
+    Object.defineProperty(target, key, {
+      get() {
+        return this[privateKey];
+      },
+      set(value: StoreValue) {
+        this[privateKey] = value;
+
+        if (!this.permissionsByKey) {
+          this.permissionsByKey = {};
+        }
+
+        this.permissionsByKey[key] = params;
+      },
+      enumerable: true,
+      configurable: true,
+    });
+  };
 }
 
 export class Store implements IStore {
   defaultPolicy: Permission = "rw";
+  permissionsByKey: Record<string, Permission[]> = {};
 
   allowedToRead(key: string): boolean {
-    throw new Error("Method not implemented.");
+    return this.checkHasPermissionForKey(key, ["r", "rw"]);
   }
 
   allowedToWrite(key: string): boolean {
-    throw new Error("Method not implemented.");
+    return this.checkHasPermissionForKey(key, ["w", "rw"]);
   }
 
   read(path: string): StoreResult {
-    throw new Error("Method not implemented.");
+    if (!this.allowedToRead(path)) {
+      throw new Error(`Not allowed to read for path ${path}`);
+    }
+
+    const descriptor = this.getDescriptor(path);
+    return descriptor?.get?.call(this);
   }
 
   write(path: string, value: StoreValue): StoreValue {
-    throw new Error("Method not implemented.");
+    if (!this.allowedToWrite(path)) {
+      throw new Error(`Not allowed to write for path ${path}`);
+    }
+
+    const descriptor = this.getDescriptor(path);
+    descriptor?.set?.call(this, value);
+    return descriptor?.get?.call(this);
   }
 
   writeEntries(entries: JSONObject): void {
-    throw new Error("Method not implemented.");
+    Object.entries(entries).forEach(([key, value]) => {
+      this.write(key, value);
+    })
   }
 
   entries(): JSONObject {
-    throw new Error("Method not implemented.");
+    const result: JSONObject = {};
+    const descriptors = this.getAllDescriptors();
+    for (const [key, descriptor] of Object.entries(descriptors)) {
+      if (this.allowedToRead(key)) {
+        result[key] = descriptor.value;
+      }
+    }
+    return result;
+  }
+
+  private checkHasPermissionForKey(key: string, permissions: Permission[]): boolean {
+    const keyPerms: Permission[] = this.permissionsByKey[key] ?? [];
+    if (this.hasKey(key) && keyPerms) {
+      return keyPerms.some((keyPerm) => permissions.includes(keyPerm));
+    }
+
+    if (this.defaultPolicy === "none") {
+      return false;
+    }
+
+    return permissions.includes(this.defaultPolicy);
+  }
+
+  private hasKey(key: string): boolean {
+    return Object.getOwnPropertyDescriptor(Object.getPrototypeOf(this), key) !== undefined;
+  }
+
+  private getAllDescriptors(): ReturnType<typeof Object.getOwnPropertyDescriptors> {
+    return Object.getOwnPropertyDescriptors(Object.getPrototypeOf(this));
+  }
+
+  private getDescriptor(key: string): PropertyDescriptor | null {
+    return Object.getOwnPropertyDescriptor(Object.getPrototypeOf(this), key) || null;
   }
 }

@@ -5,6 +5,7 @@
     "experimentalDecorators": true,
     "declaration": true,
     "strict": true,
+    "strictNullChecks": true,
     "esModuleInterop": true,
     "types": ["jest", "node"]
   },
