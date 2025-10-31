@@ -1,4 +1,4 @@
-import { JSONArray, JSONObject, JSONPrimitive } from "./json-types";
+import { JSONArray, JSONObject, JSONPrimitive } from "./utils/json-types";
 
 export type Permission = "r" | "w" | "rw" | "none";
 
